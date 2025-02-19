@@ -77,6 +77,11 @@ test-interceptor: check-go121-install check-jq-install check-vault-install build
 	@echo "Running e2e tests for interceptor..."
 	cd interceptor && ./test/e2e.sh
 
+.PHONY: local-interceptor
+local-interceptor: build-interceptor ## Create variables for interceptor local environment and run 
+	@echo
+	CAD_SILENT_POLICY=test CAD_PD_TOKEN=test TOKEN=test ./bin/interceptor
+	
 ##@ Template-updater:
 .PHONY: template-updater
 template-updater: build-template-updater lint-template-updater ## Run all targets for template-updater
