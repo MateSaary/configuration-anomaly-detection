@@ -19,7 +19,11 @@ temp_log_file=$(mktemp)
 function test_interceptor {
     # Run the interceptor and print logs to temporary log file
     CAD_PD_TOKEN=$(echo $pd_test_token) CAD_SILENT_POLICY=$(echo $pd_test_silence_policy) ./../bin/interceptor > $temp_log_file  2>&1 &
-    
+    PD_SIGNATURE="test"
+    PAYLOAD="{\"body\":\"{\\\"__pd_metadata\\\":{\\\"incident\\\":{\\\"id\\\":\\\"$incident_id\\\"}}}\",\"header\":{\"Content-Type\":[\"application/json\"]},\"extensions\":{},\"interceptor_params\":{},\"context\":null}"
+    SIGN=$(echo -n "$PAYLOAD" | sha256hmac -K $PD_SIGNATURE | tr -d "[:space:]-")
+    echo "Sign: $SIGN"
+
     # Store the PID of the interceptor process
     INTERCEPTOR_PID=$!
 
@@ -32,8 +36,8 @@ function test_interceptor {
     # Send an interceptor request to localhost:8080
     # See https://pkg.go.dev/github.com/tektoncd/triggers/pkg/apis/triggers/v1alpha1#InterceptorRequest
     CURL_EXITCODE=0
-    CURL_OUTPUT=$(curl -s -X POST -H "Content-Type: application/json" \
-        -d "{\"body\":\"{\\\"__pd_metadata\\\":{\\\"incident\\\":{\\\"id\\\":\\\"$incident_id\\\"}}}\",\"header\":{\"Content-Type\":[\"application/json\"]},\"extensions\":{},\"interceptor_params\":{},\"context\":null}" \
+    CURL_OUTPUT=$(curl -s -X POST -H "X-PagerDuty-Signature:v1=${SIGN}" -H "Content-Type: application/json" \
+        -d "$PAYLOAD" \
         http://localhost:8080) || CURL_EXITCODE=$?
 
     # Check if the curl output matches the expected response

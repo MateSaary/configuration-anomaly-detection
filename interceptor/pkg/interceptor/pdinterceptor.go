@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/PagerDuty/go-pagerduty/webhookv3"
 	investigations "github.com/openshift/configuration-anomaly-detection/pkg/investigations"
 	"github.com/openshift/configuration-anomaly-detection/pkg/pagerduty"
 	triggersv1 "github.com/tektoncd/triggers/pkg/apis/triggers/v1beta1"
@@ -39,6 +41,23 @@ func (pdi PagerDutyInterceptor) ServeHTTP(w http.ResponseWriter, r *http.Request
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 	}
+
+	pdi.Logger.Info("Interceptor response: ")
+	fmt.Println(r.Header)
+	for name, values := range r.Header {
+		pdi.Logger.Info("Header: ", name, ": ", values)
+		fmt.Print(name, ": ", values, "\n")
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		pdi.Logger.Errorf("failed to read body: %s", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+	}
+	defer r.Body.Close() //nolint:errcheck
+
+	fmt.Println("Body: ", string(body))
+
 	w.Header().Add("Content-Type", "application/json")
 	if _, err := w.Write(b); err != nil {
 		pdi.Logger.Errorf("failed to write response: %s", err)
@@ -86,7 +105,17 @@ func (pdi *PagerDutyInterceptor) executeInterceptor(r *http.Request) ([]byte, er
 	if _, err := io.Copy(&body, r.Body); err != nil {
 		return nil, internal(fmt.Errorf("failed to read body: %w", err))
 	}
+
 	var ireq triggersv1.InterceptorRequest
+
+	token, _ := os.LookupEnv("PD_SIGNATURE")
+	log.Println(token)
+
+	err := webhookv3.VerifySignature(r, token)
+	if err != nil {
+		return nil, badRequest(fmt.Errorf("failed to verify signature: %w", err))
+	}
+
 	if err := json.Unmarshal(body.Bytes(), &ireq); err != nil {
 		return nil, badRequest(fmt.Errorf("failed to parse body as InterceptorRequest: %w", err))
 	}
